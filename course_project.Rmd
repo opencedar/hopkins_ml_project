@@ -1,0 +1,135 @@
+---
+title: "Hopkins Machine Learning Project Report"
+author: "Andy Hasselwander"
+date: "February 16, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+#Data Setup
+Check to see if data exist. If they do not, go and get them from the website. "allTraining" is subsequently split into training and testing sets. ""
+```{r, echo = FALSE}
+library(caret)
+set.seed(6666)
+
+if(!exists("allTraining")){
+allTraining <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"), na.strings=c("", "NA"))}
+
+trainIndex = createDataPartition(allTraining$classe, 
+                       p=0.7, list=FALSE,times=1)
+ 
+training = allTraining[trainIndex,]
+testing = allTraining[-trainIndex,]
+
+
+if(!exists("validation")){
+validation <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"),na.strings=c("", "NA"))}
+
+```
+Source: Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+Read more: http://groupware.les.inf.puc-rio.br/har#wle_paper_section#ixzz57ISl7FAA
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+A: Exactly according to specifications
+B: Throwing the elbows to the front
+C: Lifting the dumbbell only halfway
+D: Lowering the dumbbell only halfway
+E: Throwing the hips to the front
+
+#Exploratory Analysis
+Not all of the variables have enough cases to create a valid training set. We eliminate all of the the variables that do not have complete cases in at least 90% of the rows. Not running "summary()" as a part of the Markdown to keep results reasonable.
+```{r}
+library(ISLR); library(ggplot2); library(caret);
+#summary(training)
+
+#Create a vector of anything not a variable
+ignoreVector <- c(1:7)
+
+sum(complete.cases(training[,-ignoreVector]))
+#Too few cases to use only complete cases
+
+sumCC <- function(x) {sum(complete.cases(x))}
+
+ccVector <- apply(training[-ignoreVector], 2,  sumCC)
+completeVars <- ccVector > (.9 * nrow(training))
+
+training <- training[-ignoreVector]
+training <- training[,completeVars]
+
+
+```
+
+
+
+
+#Final Prediction: Random Forests
+Random Forest dramatically outperforms both the decision tree and SVM models. For each class, the sensitivity and specificity are >= 98%. The overall accuracy is 99.27%.
+```{r}
+set.seed(66666)
+
+
+if(!exists("rfModel")){
+rfModel <- train(classe ~ ., data=training, method="rf", preProcess="scale")}
+
+
+predictRF <- predict(rfModel, testing)
+require(randomForest)
+plot(rfModel$finalModel)
+```
+
+##Confusion Matrix
+C seems to be the most difficult to predict, wiht the most false positives. E is predicted almost perfectly, both from a sensitivity (.9982) and specificity (.9996) perspective.
+
+```{r}
+
+confusionMatrix(predictRF, testing$classe)
+```
+
+##Predictions on Test Set
+```{r}
+testPredictRF <- predict(rfModel, validation)
+
+#Predictions for the test set
+data.frame(caseNumber = 1:20,predictions = testPredictRF)
+
+```
+
+#Appendix: Some Less Effective Models
+##Prediction: Decision Trees
+Decision trees do not seem to work well. D is missed entirely.
+```{r}
+require(rpart.plot)
+set.seed(66666)
+
+if(!exists("decisionTreeModel")) {decisionTreeModel <- train(classe ~ ., data=training, method="rpart", preProcess="scale")}
+rpart.plot(decisionTreeModel$finalModel)
+
+predictTree <- predict(decisionTreeModel, testing)
+
+confusionMatrix(predictTree, testing$classe)
+
+```
+
+##Prediction: Support Vector Machines
+SVM performs better than decision tree, but accuracy still leaves a lot to be desired.
+
+```{r}
+set.seed(66666)
+
+if(!exists("svmModel")) {svmModel <- train(classe ~ ., data=training, method="svmLinear", preProcess="scale")}
+
+predictSVM <- predict(svmModel, testing)
+
+confusionMatrix(predictSVM, testing$classe)
+
+
+```
+
